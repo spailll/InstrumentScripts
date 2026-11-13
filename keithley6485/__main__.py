@@ -1,201 +1,224 @@
 
-from __future__ import annotations
+"""Keithley 6485 command-line interface."""
+
 import argparse
 import csv
-from pathlib import Path
 import sys
+from pathlib import Path
+
 import pyvisa
-from .driver import Keithley6485
+
+from .arguments import (
+    add_connection_arguments,
+    open_meter,
+)
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Keithley 6485 serial control'
+        description="Keithley 6485 CLI"
     )
 
-    parser.add_argument('--port', default='COM4')
-    parser.add_argument('--baud', type=int, default=9600)
-    parser.add_argument('--timeout', type=int, default=10000)
-    parser.add_argument(
-        '--write-term',
-        choices=['lf', 'cr', 'crlf'],
-        default='lf'
+    add_connection_arguments(parser)
+
+    sub = parser.add_subparsers(
+        dest="action",
+        required=True
     )
-    parser.add_argument(
-        '--read-term',
-        choices=['lf', 'cr', 'crlf'],
-        default='lf'
-    )
-    parser.add_argument('--backend', default=None)
 
-    sub = parser.add_subparsers(dest='action', required=True)
+    for name in [
+        "ports", "id", "error", "reset", "clear"
+    ]:
+        sub.add_parser(name)
 
-    sub.add_parser('ports', help='List VISA resources')
-    sub.add_parser('id', help='Identify instrument')
-    sub.add_parser('read', help='Read current')
-    sub.add_parser('error', help='Query error queue')
-    sub.add_parser('reset', help='Reset instrument')
-    sub.add_parser('clear', help='Clear status')
+    read = sub.add_parser("read")
+    stream = sub.add_parser("stream")
 
-    command = sub.add_parser('query')
-    command.add_argument('scpi')
+    for command in [read, stream]:
+        command.add_argument(
+            "--prepare-trigger",
+            action="store_true"
+        )
+        command.add_argument(
+            "--read-mode",
+            choices=["fresh", "latest"],
+            default="fresh"
+        )
 
-    command = sub.add_parser('write')
-    command.add_argument('scpi')
-
-    cfg = sub.add_parser('configure')
-    cfg.add_argument('--range', type=float, dest='range_amperes')
-    cfg.add_argument('--nplc', type=float)
-    cfg.add_argument('--filter', choices=['on', 'off'])
-
-    stream = sub.add_parser('stream')
-    stream.add_argument('--interval', type=float, default=0.5)
-    stream.add_argument('--count', type=int)
-    stream.add_argument('--csv', type=Path)
     stream.add_argument(
-        '--unit',
-        choices=['A', 'nA', 'pA'],
-        default='pA'
+        "--interval",
+        type=float,
+        default=0.5
+    )
+    stream.add_argument(
+        "--count",
+        type=int,
+        default=None
+    )
+    stream.add_argument(
+        "--csv",
+        type=Path
+    )
+    stream.add_argument(
+        "--unit",
+        choices=["A", "nA", "pA"],
+        default="pA"
+    )
+
+    for name in ["query", "write"]:
+        command = sub.add_parser(name)
+        command.add_argument("scpi")
+
+    cfg = sub.add_parser("configure")
+    cfg.add_argument(
+        "--range",
+        type=float,
+        dest="range_amperes"
+    )
+    cfg.add_argument("--nplc", type=float)
+    cfg.add_argument(
+        "--filter",
+        choices=["on", "off"]
     )
 
     args = parser.parse_args()
 
-    if args.action == 'ports':
-        with (
-            pyvisa.ResourceManager(args.backend)
-            if args.backend else pyvisa.ResourceManager()
-        ) as rm:
-            print(
-                '\n'.join(rm.list_resources())
-                or 'No VISA resources found'
-            )
-        return 0
-
-    terms = {
-        'lf': '\n',
-        'cr': '\r',
-        'crlf': '\r\n'
-    }
-
     try:
-        with Keithley6485(
-            args.port,
-            baud=args.baud,
-            timeout_ms=args.timeout,
-            write_termination=terms[args.write_term],
-            read_termination=terms[args.read_term],
-            backend=args.backend
-        ) as meter:
+        if args.action == "ports":
+            with pyvisa.ResourceManager(
+                args.backend
+            ) as rm:
+                for resource in rm.list_resources():
+                    print(resource)
+            return 0
 
-            if args.action == 'id':
+        with open_meter(args) as meter:
+
+            if args.action == "id":
                 print(meter.identify())
 
-            elif args.action == 'read':
-                m = meter.read_current()
-                print(
-                    f'{m.amperes:.9e} A '
-                    f'({m.picoamperes:.3f} pA) '
-                    f'raw={m.raw!r}'
+            elif args.action == "read":
+                if args.prepare_trigger:
+                    meter.prepare_immediate_reading()
+
+                m = meter.read_current(
+                    mode=args.read_mode
                 )
 
-            elif args.action == 'error':
+                print(
+                    f"{m.amperes:.9e} A | "
+                    f"{m.picoamperes:.3f} pA"
+                )
+
+            elif args.action == "error":
                 print(meter.error())
 
-            elif args.action == 'reset':
+            elif args.action == "reset":
                 meter.reset()
-                print('Reset command sent')
+                print("Reset command sent")
 
-            elif args.action == 'clear':
+            elif args.action == "clear":
                 meter.clear_status()
-                print('Status cleared')
+                print("Status cleared")
 
-            elif args.action == 'query':
+            elif args.action == "query":
                 print(meter.query(args.scpi))
 
-            elif args.action == 'write':
+            elif args.action == "write":
                 meter.write(args.scpi)
-                print('Command sent (not instrument acknowledgment)')
+                print("Command sent")
 
-            elif args.action == 'configure':
+            elif args.action == "configure":
                 meter.configure_current(
                     range_amperes=args.range_amperes,
                     nplc=args.nplc,
                     filter_enabled=(
-                        None if args.filter is None
-                        else args.filter == 'on'
-                    )
+                        None
+                        if args.filter is None
+                        else args.filter == "on"
+                    ),
                 )
-                print('Configuration commands sent')
+                print("Configuration commands sent")
 
-            elif args.action == 'stream':
-                file = None
+            elif args.action == "stream":
+                if args.interval < 0:
+                    parser.error(
+                        "--interval must be nonnegative"
+                    )
+
+                if args.count is not None and args.count < 1:
+                    parser.error(
+                        "--count must be positive"
+                    )
+
+                if args.prepare_trigger:
+                    meter.prepare_immediate_reading()
+
+                csv_file = None
 
                 try:
+                    writer = None
+
                     if args.csv:
                         args.csv.parent.mkdir(
                             parents=True,
                             exist_ok=True
                         )
 
-                        file = args.csv.open(
-                            'w',
-                            newline='',
-                            encoding='utf-8'
+                        csv_file = args.csv.open(
+                            "w",
+                            newline="",
+                            encoding="utf-8"
                         )
 
-                        writer = csv.writer(file)
+                        writer = csv.writer(csv_file)
                         writer.writerow([
-                            'timestamp_utc',
-                            'amperes',
-                            'raw'
+                            "timestamp_utc",
+                            "amperes",
+                            "raw",
                         ])
 
                     for m in meter.stream(
                         interval_s=args.interval,
-                        count=args.count
+                        count=args.count,
+                        mode=args.read_mode,
                     ):
-                        val = {
-                            'A': m.amperes,
-                            'nA': m.nanoamperes,
-                            'pA': m.picoamperes
+                        value = {
+                            "A": m.amperes,
+                            "nA": m.nanoamperes,
+                            "pA": m.picoamperes,
                         }[args.unit]
 
                         print(
-                            f'{m.timestamp_utc}  '
-                            f'{val:.9g} {args.unit}',
+                            f"{m.timestamp_utc} | "
+                            f"{value:.6f} {args.unit}",
                             flush=True
                         )
 
-                        if file:
+                        if writer:
                             writer.writerow([
                                 m.timestamp_utc,
-                                f'{m.amperes:.12g}',
-                                m.raw
+                                m.amperes,
+                                m.raw,
                             ])
-                            file.flush()
+                            csv_file.flush()
 
                 except KeyboardInterrupt:
-                    print('\nStopped by user')
+                    print("\nStopped")
 
                 finally:
-                    if file:
-                        file.close()
+                    if csv_file:
+                        csv_file.close()
 
-    except (
-        pyvisa.errors.VisaIOError,
-        ValueError,
-        RuntimeError
-    ) as exc:
-        print(f'ERROR: {exc}', file=sys.stderr)
+        return 0
+
+    except Exception as exc:
         print(
-            'Check COM port, close NI MAX test panels, '
-            'and verify baud/terminators.',
+            f"ERROR: {exc}",
             file=sys.stderr
         )
         return 1
 
-    return 0
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     raise SystemExit(main())

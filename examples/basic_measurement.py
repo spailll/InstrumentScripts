@@ -1,19 +1,78 @@
 
-from keithley6485 import Keithley6485
+"""Basic Keithley 6485 measurement script."""
 
-with Keithley6485('COM4') as meter:
-    print('Connected:', meter.identify())
+import argparse
+import sys
 
-    meter.configure_current(
-        autorange=True,
-        nplc=1
+from keithley6485.arguments import (
+    add_connection_arguments,
+    open_meter,
+)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Keithley 6485 basic measurements"
     )
 
-    for measurement in meter.stream(
-        interval_s=1,
-        count=10
-    ):
+    add_connection_arguments(parser)
+
+    parser.add_argument(
+        "--count",
+        type=int,
+        default=10
+    )
+
+    parser.add_argument(
+        "--interval",
+        type=float,
+        default=1.0
+    )
+
+    parser.add_argument(
+        "--prepare-trigger",
+        action="store_true"
+    )
+
+    parser.add_argument(
+        "--read-mode",
+        choices=["fresh", "latest"],
+        default="fresh"
+    )
+
+    args = parser.parse_args()
+
+    if args.count < 1 or args.interval < 0:
+        parser.error("Invalid count or interval")
+
+    try:
+        with open_meter(args) as meter:
+
+            print("Connected:", meter.identify())
+
+            if args.prepare_trigger:
+                meter.prepare_immediate_reading()
+
+            for reading in meter.stream(
+                interval_s=args.interval,
+                count=args.count,
+                mode=args.read_mode,
+            ):
+                print(
+                    f"{reading.timestamp_utc} | "
+                    f"{reading.amperes:.9e} A | "
+                    f"{reading.picoamperes:.3f} pA"
+                )
+
+        return 0
+
+    except Exception as exc:
         print(
-            measurement.timestamp_utc,
-            f'{measurement.picoamperes:.3f} pA'
+            f"Measurement error: {exc}",
+            file=sys.stderr
         )
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

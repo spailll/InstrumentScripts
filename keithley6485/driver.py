@@ -198,35 +198,76 @@ class Keithley6485:
             )
 
         return float(match.group())
+    
+    def read_current(self, mode: str = "fresh") -> Measurement:
+        """Read current in amperes.
 
-    def read_current(self) -> Measurement:
-        raw = self.query(':READ?')
+        fresh: READ? triggers a new measurement.
+        latest: SENS:DATA? returns the last available reading.
+                It may be stale.
+        """
+        commands = {
+            "fresh": ":READ?",
+            "latest": ":SENS:DATA?",
+        }
+
+        if mode not in commands:
+            raise ValueError(
+                "mode must be 'fresh' or 'latest'"
+            )
+
+        raw = self.query(commands[mode])
+        amps = self.parse_amperes(raw)
+
+        if not math.isfinite(amps) or abs(amps) > 0.021:
+            raise ValueError(
+                f"Invalid/overflow current reading: {raw!r}"
+            )
 
         return Measurement(
-            datetime.now(timezone.utc).isoformat(timespec='milliseconds'),
-            self.parse_amperes(raw),
-            raw
+            datetime.now(timezone.utc).isoformat(
+                timespec="milliseconds"
+            ),
+            amps,
+            raw,
         )
+
+
 
     def stream(
         self,
         *,
         interval_s: float = 0.5,
-        count: int | None = None
+        count: int | None = None,
+        mode: str = "fresh",
     ):
         if interval_s < 0:
-            raise ValueError('interval_s must be nonnegative')
+            raise ValueError("interval_s must be >= 0")
 
         if count is not None and count < 1:
-            raise ValueError('count must be >= 1')
+            raise ValueError("count must be >= 1")
 
         i = 0
 
         while count is None or i < count:
-            started = time.monotonic()
-            yield self.read_current()
-            i += 1
+            start = time.monotonic()
 
-            time.sleep(
-                max(0.0, interval_s - (time.monotonic() - started))
-            )
+            yield self.read_current(mode=mode)
+
+            i += 1
+            elapsed = time.monotonic() - start
+            time.sleep(max(0, interval_s - elapsed))
+
+
+    def prepare_immediate_reading(self) -> None:
+        """Configure one immediate trigger per READ? command.
+
+        Changes trigger settings but does not reset measurement ranges.
+        """
+        self.write(":ABOR")
+        self.write(":ARM:SOUR IMM")
+        self.write(":ARM:COUN 1")
+        self.write(":TRIG:SOUR IMM")
+        self.write(":TRIG:COUN 1")
+        self.write(":TRIG:DEL:AUTO OFF")
+        self.write(":TRIG:DEL 0")
