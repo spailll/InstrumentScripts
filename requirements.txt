@@ -1,0 +1,2 @@
+PyVISA>=1.14,<2
+matplotlib>=3.8,<4
