@@ -39,7 +39,7 @@ class Keithley6485:
         parity: str = 'none',
         stop_bits: int = 1,
         flow_control: str = 'none',
-        backend: str | None = None
+        backend: str | None = "@py"
     ):
         self.port = port
         self.baud = baud
@@ -199,7 +199,7 @@ class Keithley6485:
             )
 
         return float(match.group())
-    
+
     def read_current(self, mode: str = "fresh") -> Measurement:
         """Read current in amperes.
 
@@ -233,8 +233,6 @@ class Keithley6485:
             raw,
         )
 
-
-
     def stream(
         self,
         *,
@@ -258,7 +256,6 @@ class Keithley6485:
             i += 1
             elapsed = time.monotonic() - start
             time.sleep(max(0, interval_s - elapsed))
-
 
     def prepare_immediate_reading(self) -> None:
         """Configure one immediate trigger per READ? command.

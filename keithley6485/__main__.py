@@ -101,13 +101,13 @@ def main():
                 if args.prepare_trigger:
                     meter.prepare_immediate_reading()
 
-                m = meter.read_current(
+                measurement = meter.read_current(
                     mode=args.read_mode
                 )
 
                 print(
-                    f"{m.amperes:.9e} A | "
-                    f"{m.picoamperes:.3f} pA"
+                    f"{measurement.amperes:.9e} A | "
+                    f"{measurement.picoamperes:.3f} pA"
                 )
 
             elif args.action == "error":
@@ -178,28 +178,28 @@ def main():
                             "raw",
                         ])
 
-                    for m in meter.stream(
+                    for measurement in meter.stream(
                         interval_s=args.interval,
                         count=args.count,
                         mode=args.read_mode,
                     ):
                         value = {
-                            "A": m.amperes,
-                            "nA": m.nanoamperes,
-                            "pA": m.picoamperes,
+                            "A": measurement.amperes,
+                            "nA": measurement.nanoamperes,
+                            "pA": measurement.picoamperes,
                         }[args.unit]
 
                         print(
-                            f"{m.timestamp_utc} | "
+                            f"{measurement.timestamp_utc} | "
                             f"{value:.6f} {args.unit}",
                             flush=True
                         )
 
                         if writer:
                             writer.writerow([
-                                m.timestamp_utc,
-                                m.amperes,
-                                m.raw,
+                                measurement.timestamp_utc,
+                                measurement.amperes,
+                                measurement.raw,
                             ])
                             csv_file.flush()
 

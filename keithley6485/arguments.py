@@ -49,7 +49,7 @@ def add_connection_arguments(parser):
     )
     parser.add_argument(
         "--backend",
-        default=None
+        default="@py"
     )
 
 
