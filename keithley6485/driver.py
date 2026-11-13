@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import re
 import time
+import math
 import pyvisa
 from pyvisa import constants
 
