@@ -16,7 +16,7 @@ from typing import Sequence
 @dataclass(frozen=True)
 class SensorCalibration:
     volts_per_celsius: float = 0.005
-    reference_volts: float = 0.0
+    reference_volts: float = 1.25
     temperature_offset_c: float = 0.0
 
     def __post_init__(self):

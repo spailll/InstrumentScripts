@@ -14,7 +14,7 @@ def make_parser():
     p = argparse.ArgumentParser(description="USB-6001 two-channel AD8495 voltage-to-temperature reader")
     p.add_argument("--device", default="Dev1", help="NI-MAX DAQ name, default Dev1")
     p.add_argument("--channels", nargs=2, type=int, default=[0, 1], metavar=("TC1", "TC2"))
-    p.add_argument("--reference-volts", nargs=2, type=float, default=[0., 0.], metavar=("TC1", "TC2"),
+    p.add_argument("--reference-volts", nargs=2, type=float, default=[1.25, 1.25], metavar=("TC1", "TC2"),
                    help="AD8495 REF voltages, default 0 0; use e.g. 1.25 1.25 ONLY if wired that way")
     p.add_argument("--slope", nargs=2, type=float, default=[0.005, 0.005], metavar=("TC1", "TC2"),
                    help="volts per °C, default 0.005 0.005")
